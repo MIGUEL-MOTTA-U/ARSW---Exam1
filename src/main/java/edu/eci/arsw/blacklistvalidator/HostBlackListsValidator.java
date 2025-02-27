@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -37,6 +38,7 @@ public class HostBlackListsValidator {
         
         CopyOnWriteArrayList<Integer> blackListOcurrences = new CopyOnWriteArrayList<>();
         AtomicInteger ocurrencesCount=new AtomicInteger(0);
+        AtomicInteger checkedLists = new AtomicInteger(0);
         HostBlacklistsDataSourceFacade skds=HostBlacklistsDataSourceFacade.getInstance();
         ArrayList<BLSearch> threads = new ArrayList<>(nThreads + 1);
         int size = skds.getRegisteredServersCount();
@@ -45,44 +47,38 @@ public class HostBlackListsValidator {
         int end;
         int remainder = size % nThreads;
 
-        System.out.println("Chunk: " + chunk);
-        System.out.println("Remainder: " + remainder);
-
         for (int i = 0; i < nThreads; i ++){
 
             end=start+chunk;
 
-            BLSearch thread = new BLSearch(start, end, ipaddress, ocurrencesCount,blackListOcurrences,skds);
+            BLSearch thread = new BLSearch(start, end - 1, ipaddress, ocurrencesCount, checkedLists,blackListOcurrences,skds);
             threads.add(thread);
 
-            System.out.println("Start: "+ start + " end: "+ (end -1));
             start=end;
         }
-        if(remainder != 0) threads.add(new BLSearch(start, start + remainder, ipaddress, ocurrencesCount,blackListOcurrences, skds)); // System.out.println("Start: " + start +" End: " + (start + remainder))
+        if(remainder != 0) threads.add(new BLSearch(start, start + remainder, ipaddress, ocurrencesCount, checkedLists,blackListOcurrences, skds)); // System.out.println("Start: " + start +" End: " + (start + remainder))
         for(BLSearch b: threads){
             b.start();
         }
+        for (BLSearch b: threads){
+            try{
+                b.join();
+                if(ocurrencesCount.get()  >= HostBlackListsValidator.BLACK_LIST_ALARM_COUNT) break;
 
-        int checkedListsCount=0;
-        for (int i=0;i<skds.getRegisteredServersCount() && ocurrencesCount.get()<BLACK_LIST_ALARM_COUNT;i++){
-            checkedListsCount++;
-            
-            if (skds.isInBlackListServer(i, ipaddress)){
-                
-                blackListOcurrences.add(i);
-                
-                ocurrencesCount.incrementAndGet();
+
+            } catch (InterruptedException e){
+                Thread.currentThread().interrupt();
+                System.out.println("Error while waiting threads");
             }
         }
-        
         if (ocurrencesCount.get()>=BLACK_LIST_ALARM_COUNT){
             skds.reportAsNotTrustworthy(ipaddress);
         }
         else{
             skds.reportAsTrustworthy(ipaddress);
-        }                
+        }
         
-        LOG.log(Level.INFO, "Checked Black Lists:{0} of {1}", new Object[]{checkedListsCount, skds.getRegisteredServersCount()});
+        LOG.log(Level.INFO, "Checked Black Lists:{0} of {1}", new Object[]{checkedLists.get(), skds.getRegisteredServersCount()});
         
         return blackListOcurrences;
     }

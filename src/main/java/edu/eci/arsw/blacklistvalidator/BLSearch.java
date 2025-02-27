@@ -6,6 +6,7 @@ import edu.eci.arsw.spamkeywordsdatasource.HostBlacklistsDataSourceFacade;
 
 public class BLSearch extends Thread{
     private final AtomicInteger sharedCount;
+    private final AtomicInteger checkedLists;
     private final CopyOnWriteArrayList<Integer> sharedOcurrencesList;
     private final int currentPosition;
     private final String ipaddress;
@@ -14,11 +15,12 @@ public class BLSearch extends Thread{
 
     final CopyOnWriteArrayList<String> searcList = new CopyOnWriteArrayList<>();
 
-    public BLSearch(int start, int end, String ipAddress, AtomicInteger sharedCount, CopyOnWriteArrayList<Integer> sharedOcurrencesList,HostBlacklistsDataSourceFacade searcher){
+    public BLSearch(int start, int end, String ipAddress, AtomicInteger sharedCount, AtomicInteger checkedLists, CopyOnWriteArrayList<Integer> sharedOcurrencesList,HostBlacklistsDataSourceFacade searcher){
         if(end < start ) throw new RuntimeException("The start interval should be less than the end interval");
         this.searcher = searcher;
         this.sharedOcurrencesList = sharedOcurrencesList;
         this.currentPosition = start;
+        this.checkedLists = checkedLists;
         this.endPosition = end;
         this.ipaddress = ipAddress;
         this.sharedCount = sharedCount;
@@ -30,9 +32,9 @@ public class BLSearch extends Thread{
             if(sharedCount.get()  >= HostBlackListsValidator.BLACK_LIST_ALARM_COUNT) return;
             if (searcher.isInBlackListServer(i, ipaddress)){
                 sharedOcurrencesList.add(i);
-
                 sharedCount.incrementAndGet();
             }
+            checkedLists.incrementAndGet();
         }
     }
 }
